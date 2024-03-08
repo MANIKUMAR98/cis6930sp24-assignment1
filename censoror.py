@@ -62,7 +62,8 @@ def process_file(input_file, args):
     res = censor_spacy(res)
     if not os.path.exists(args.output):
         os.makedirs(args.output)
-    output_file = os.path.join(args.output, os.path.splitext(os.path.basename(input_file))[0] + '.censored')
+    # output_file = os.path.join(args.output, os.path.splitext(os.path.basename(input_file))[0] + '.censored')
+    output_file = os.path.join(args.output, os.path.basename(input_file) + '.censored')
 
     # Write the censored content to the output file
     with open(output_file, 'w') as file:
