@@ -1,0 +1,2 @@
+1. GoogleCodeLabs | [Link](https://codelabs.developers.google.com/codelabs/cloud-natural-language-python3#8) | This website provides valuable insights on connecting and configuring the Google Natural Language Processing (NLP) library, offering guidance on the essential requirements, including the setup of authentication keys.
+2. ChatGPT | ChatGPT assisted me in resolving the error with the spaCy CLI.

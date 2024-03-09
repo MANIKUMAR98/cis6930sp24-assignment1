@@ -12,7 +12,6 @@ from google.oauth2 import service_account
 
 ##Global variable ###
 spacy.cli.download("en_core_web_md")
-statistics = {}
 client = None
 
 
@@ -30,7 +29,7 @@ def load_google_nlp_cred():
         print("Exception occurred while extracting credentials ", e)
 
 
-def censor_using_google_nlp(text, input_file_name):
+def censor_using_google_nlp(text, input_file_name, statistics):
     res = text
     try:
         document = language_v1.Document(content=text, type_=language_v1.Document.Type.PLAIN_TEXT)
@@ -54,7 +53,7 @@ def censor_using_google_nlp(text, input_file_name):
         return res
 
 
-def censor_using_spacy(text, nlp, input_file_name):
+def censor_using_spacy(text, nlp, input_file_name, statistics):
     censored_text = text
     try:
         doc = nlp(censored_text)
@@ -71,7 +70,8 @@ def censor_using_spacy(text, nlp, input_file_name):
         return censored_text
 
 
-def censor_address_from_pyap(censored_text, input_file_name):
+def censor_address_using_pyap(text, input_file_name, statistics):
+    censored_text = text
     try:
         addresses = pyap.parse(censored_text, country='US')
         for address in addresses:
@@ -84,38 +84,38 @@ def censor_address_from_pyap(censored_text, input_file_name):
         return censored_text
 
 
-def write_data_to_stats(stats, file_count):
+def write_data_to_stats(stats, file_count, statistics):
     if stats == "stderr":
         sys.stderr.write("Censoring Statistics:\n")
-        sys.stderr.write("---------------------\n")
+        sys.stderr.write("--------------------------\n")
         sys.stderr.write("Total Files Processed: " + str(file_count) + "\n")
         sys.stderr.write("---------------------\n")
         for key, value in statistics.items():
             sys.stderr.write("File Name: " + key + "\n" + "- Censored types and count: \n")
             for stat_key, stat_value in value.items():
                 sys.stderr.write(f" - {stat_key.capitalize()}: {stat_value}\n")
-            sys.stderr.write("---------------------\n")
+            sys.stderr.write("--------------------------\n")
     elif stats == "stdout":
         sys.stdout.write("Censoring Statistics:\n")
-        sys.stdout.write("---------------------\n")
+        sys.stdout.write("--------------------------\n")
         sys.stdout.write("Total Files Processed: " + str(file_count) + "\n")
-        sys.stdout.write("---------------------\n")
+        sys.stdout.write("--------------------------\n")
         for key, value in statistics.items():
             sys.stdout.write("File Name: " + key + "\n" + "- Censored types and count: \n")
             for stat_key, stat_value in value.items():
                 sys.stdout.write(f" - {stat_key.capitalize()}: {stat_value}\n")
-            sys.stdout.write("---------------------\n")
+            sys.stdout.write("--------------------------\n")
     else:
         with open(stats, 'w') as file:
             file.write("Censoring Statistics:\n")
-            file.write("---------------------\n")
+            file.write("--------------------------\n")
             file.write("Total Files Processed: " + str(file_count) + "\n")
-            file.write("---------------------\n")
+            file.write("--------------------------\n")
             for key, value in statistics.items():
                 file.write("File Name: " + key + "\n" + "- Censored types and count: \n")
                 for stat_key, stat_value in value.items():
                     file.write(f" - {stat_key.capitalize()}: {stat_value}\n")
-                file.write("---------------------\n")
+                file.write("--------------------------\n")
 
 
 def main():
@@ -134,6 +134,7 @@ def main():
         'dates': 0,
         'phone_numbers': 0,
     }
+    statistics = {}
     file_count = 0
     for pattern in args.input:
         input_files = glob.glob(pattern, recursive=True)
@@ -144,20 +145,20 @@ def main():
                 try:
                     actual_file_name = os.path.basename(input_file)
                     statistics[actual_file_name] = file_statistics.copy()
-                    process_file(input_file, args, nlp, actual_file_name)
+                    process_file(input_file, args, nlp, actual_file_name, statistics)
                     file_count += 1
                 except Exception as e:
                     print(f"Error processing {input_file}: {e}")
                 write_data_to_stats(args.stats, file_count)
 
 
-def process_file(input_file, args, nlp, actual_file_name):
+def process_file(input_file, args, nlp, actual_file_name, statistics):
     try:
         with open(input_file, 'r') as file:
             text_to_censor = file.read()
-        res = censor_address_from_pyap(text_to_censor, actual_file_name)
-        res = censor_using_google_nlp(res, actual_file_name)
-        res = censor_using_spacy(res, nlp, actual_file_name)
+        res = censor_address_using_pyap(text_to_censor, actual_file_name, statistics)
+        res = censor_using_google_nlp(res, actual_file_name, statistics)
+        res = censor_using_spacy(res, nlp, actual_file_name, statistics)
 
         if not os.path.exists(args.output):
             os.makedirs(args.output)
