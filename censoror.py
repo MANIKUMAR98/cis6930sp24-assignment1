@@ -11,7 +11,7 @@ from google.cloud import language_v1
 from google.oauth2 import service_account
 
 ##Global variable ###
-# spacy.cli.download("en_core_web_md")
+spacy.cli.download("en_core_web_md")
 statistics = {}
 client = None
 
