@@ -91,9 +91,9 @@ def write_data_to_stats(stats, file_count):
         sys.stderr.write("Total Files Processed: " + str(file_count) + "\n")
         sys.stderr.write("---------------------\n")
         for key, value in statistics.items():
-            sys.stderr.write("File Name: " + key + "\n" + "-Censored Details: \n")
+            sys.stderr.write("File Name: " + key + "\n" + "- Censored types and count: \n")
             for stat_key, stat_value in value.items():
-                sys.stderr.write(f" -{stat_key.capitalize()}: {stat_value}\n")
+                sys.stderr.write(f" - {stat_key.capitalize()}: {stat_value}\n")
             sys.stderr.write("---------------------\n")
     elif stats == "stdout":
         sys.stdout.write("Censoring Statistics:\n")
@@ -101,9 +101,9 @@ def write_data_to_stats(stats, file_count):
         sys.stdout.write("Total Files Processed: " + str(file_count) + "\n")
         sys.stdout.write("---------------------\n")
         for key, value in statistics.items():
-            sys.stdout.write("File Name: " + key + "\n" + "-Censored Details: \n")
+            sys.stdout.write("File Name: " + key + "\n" + "- Censored types and count: \n")
             for stat_key, stat_value in value.items():
-                sys.stdout.write(f" -{stat_key.capitalize()}: {stat_value}\n")
+                sys.stdout.write(f" - {stat_key.capitalize()}: {stat_value}\n")
             sys.stdout.write("---------------------\n")
     else:
         with open(stats, 'w') as file:
@@ -112,9 +112,9 @@ def write_data_to_stats(stats, file_count):
             file.write("Total Files Processed: " + str(file_count) + "\n")
             file.write("---------------------\n")
             for key, value in statistics.items():
-                file.write("File Name: " + key + "\n" + "-Censored Details: \n")
+                file.write("File Name: " + key + "\n" + "- Censored types and count: \n")
                 for stat_key, stat_value in value.items():
-                    file.write(f" -{stat_key.capitalize()}: {stat_value}\n")
+                    file.write(f" - {stat_key.capitalize()}: {stat_value}\n")
                 file.write("---------------------\n")
 
 
@@ -152,21 +152,21 @@ def main():
 
 
 def process_file(input_file, args, nlp, actual_file_name):
+    try:
+        with open(input_file, 'r') as file:
+            text_to_censor = file.read()
+        res = censor_address_from_pyap(text_to_censor, actual_file_name)
+        res = censor_using_google_nlp(res, actual_file_name)
+        res = censor_using_spacy(res, nlp, actual_file_name)
 
-    with open(input_file, 'r') as file:
-        text_to_censor = file.read()
-    res = censor_address_from_pyap(text_to_censor, actual_file_name)
-    res = censor_using_google_nlp(res, actual_file_name)
-    res = censor_using_spacy(res, nlp, actual_file_name)
+        if not os.path.exists(args.output):
+            os.makedirs(args.output)
+        output_file = os.path.join(args.output, os.path.basename(input_file) + '.censored')
 
-    if not os.path.exists(args.output):
-        os.makedirs(args.output)
-    # output_file = os.path.join(args.output, os.path.splitext(os.path.basename(input_file))[0] + '.censored')
-    output_file = os.path.join(args.output, os.path.basename(input_file) + '.censored')
-
-    # Write the censored content to the output file
-    with open(output_file, 'w') as file:
-        file.write(res)
+        with open(output_file, 'w') as file:
+            file.write(res)
+    except Exception as e:
+        print("Exception occurred while processing file ", e)
 
 
 if __name__ == '__main__':
