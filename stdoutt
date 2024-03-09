@@ -1,18 +1,25 @@
 Censoring Statistics:
 ---------------------
-Total Files Processed: 2
+Total Files Processed: 3
 ---------------------
 File Name: 2.
 -Censored Details: 
- -Names: 2
- -Addresses: 0
- -Dates: 11
+ -Names: 3
+ -Addresses: 2
+ -Dates: 15
  -Phone_numbers: 1
 ---------------------
 File Name: 1.
 -Censored Details: 
- -Names: 3
+ -Names: 1
  -Addresses: 0
- -Dates: 1
+ -Dates: 5
  -Phone_numbers: 0
+---------------------
+File Name: test.txt
+-Censored Details: 
+ -Names: 1
+ -Addresses: 1
+ -Dates: 22
+ -Phone_numbers: 1
 ---------------------

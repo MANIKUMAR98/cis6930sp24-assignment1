@@ -2,20 +2,59 @@ import spacy
 import argparse
 import glob
 import os
-import phonenumbers
+from pathlib import Path
 import pyap
 import sys
-import en_core_web_md
+import spacy.cli
 
+from google.cloud import language_v1
+from google.oauth2 import service_account
+
+##Global variable ###
+# spacy.cli.download("en_core_web_md")
 statistics = {}
+client = None
 
 
 def load_spacy():
-    nlp = en_core_web_md.load()
+    nlp = spacy.load("en_core_web_md")
     return nlp
 
 
-def censor_name_and_date(text, nlp, input_file_name):
+def load_google_nlp_cred():
+    try:
+        credentials = service_account.Credentials.from_service_account_file("./credentials/service_key.json")
+        global client
+        client = language_v1.LanguageServiceClient(credentials=credentials)
+    except Exception as e:
+        print("Exception occurred while extracting credentials ", e)
+
+
+def censor_using_google_nlp(text, input_file_name):
+    res = text
+    try:
+        document = language_v1.Document(content=text, type_=language_v1.Document.Type.PLAIN_TEXT)
+        response = client.analyze_entities(document=document)
+        for entity in response.entities:
+            if entity.type_ == language_v1.Entity.Type.LOCATION:
+                res = res.replace(entity.name, '\u2588' * len(entity.name))
+                statistics[input_file_name]['addresses'] += 1
+            elif entity.type_ == language_v1.Entity.Type.PHONE_NUMBER:
+                res = res.replace(entity.name, '\u2588' * len(entity.name))
+                statistics[input_file_name]['phone_numbers'] += 1
+            elif entity.type_ == language_v1.Entity.Type.DATE:
+                res = res.replace(entity.name, '\u2588' * len(entity.name))
+                statistics[input_file_name]['dates'] += 1
+            elif entity.type_ == language_v1.Entity.Type.PERSON:
+                res = res.replace(entity.name, '\u2588' * len(entity.name))
+                statistics[input_file_name]['dates'] += 1
+        return res
+    except Exception as e:
+        print("Exception occurred while censoring data using google nlp ", e)
+        return res
+
+
+def censor_using_spacy(text, nlp, input_file_name):
     censored_text = text
     try:
         doc = nlp(censored_text)
@@ -32,20 +71,7 @@ def censor_name_and_date(text, nlp, input_file_name):
         return censored_text
 
 
-def censor_phonenumbers(text, input_file_name):
-    numbers_text = text
-    try:
-        for match in phonenumbers.PhoneNumberMatcher(text, "US"):
-            original_format = match.raw_string
-            numbers_text = numbers_text.replace(original_format, '\u2588' * len(original_format))
-            statistics[input_file_name]['phone_numbers'] += 1
-        return numbers_text
-    except Exception as e:
-        print("Exception occurred while censoring phone numbers ", e)
-        return numbers_text
-
-
-def censor_address(censored_text, input_file_name):
+def censor_address_from_pyap(censored_text, input_file_name):
     try:
         addresses = pyap.parse(censored_text, country='US')
         for address in addresses:
@@ -94,7 +120,7 @@ def write_data_to_stats(stats, file_count):
 
 def main():
     parser = argparse.ArgumentParser(description="Censor sensitive information in plain text documents.")
-    parser.add_argument('--input', required=True, help='Input file pattern (e.g., "*.txt").')
+    parser.add_argument('--input', nargs='*', required=True, help='Input file pattern (e.g., "*.txt").')
     parser.add_argument('--names', action='store_true', help='Censor names.')
     parser.add_argument('--dates', action='store_true', help='Censor dates.')
     parser.add_argument('--phones', action='store_true', help='Censor phone numbers.')
@@ -102,7 +128,6 @@ def main():
     parser.add_argument('--output', required=True, help='Output folder for censored files.')
     parser.add_argument('--stats', required=True, help='File or location to write statistics.')
     args = parser.parse_args()
-    input_files = glob.glob(args.input, recursive=True)
     file_statistics = {
         'names': 0,
         'addresses': 0,
@@ -110,25 +135,30 @@ def main():
         'phone_numbers': 0,
     }
     file_count = 0
-    nlp = load_spacy()
-    for input_file in input_files:
-        try:
-            actual_file_name = os.path.basename(input_file)
-            statistics[actual_file_name] = file_statistics.copy()
-            process_file(input_file, args, nlp, actual_file_name)
-            file_count += 1
-        except Exception as e:
-            print(f"Error processing {input_file}: {e}")
-    write_data_to_stats(args.stats, file_count)
+    for pattern in args.input:
+        input_files = glob.glob(pattern, recursive=True)
+        nlp = load_spacy()
+        load_google_nlp_cred()
+        for input_file in input_files:
+            if Path(input_file).exists():
+                try:
+                    actual_file_name = os.path.basename(input_file)
+                    statistics[actual_file_name] = file_statistics.copy()
+                    process_file(input_file, args, nlp, actual_file_name)
+                    file_count += 1
+                except Exception as e:
+                    print(f"Error processing {input_file}: {e}")
+                write_data_to_stats(args.stats, file_count)
 
 
 def process_file(input_file, args, nlp, actual_file_name):
 
     with open(input_file, 'r') as file:
         text_to_censor = file.read()
-    res = censor_address(text_to_censor, actual_file_name)
-    res = censor_name_and_date(res, nlp, actual_file_name)
-    res = censor_phonenumbers(res, actual_file_name)
+    res = censor_address_from_pyap(text_to_censor, actual_file_name)
+    res = censor_using_google_nlp(res, actual_file_name)
+    res = censor_using_spacy(res, nlp, actual_file_name)
+
     if not os.path.exists(args.output):
         os.makedirs(args.output)
     # output_file = os.path.join(args.output, os.path.splitext(os.path.basename(input_file))[0] + '.censored')
