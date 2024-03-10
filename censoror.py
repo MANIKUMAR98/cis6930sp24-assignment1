@@ -12,11 +12,10 @@ import spacy.cli
 from google.cloud import language_v1
 from google.oauth2 import service_account
 
-##Global variable ###
+
 spacy.cli.download("en_core_web_md")
 client = None
 email_pattern = r'[\w\.-]+@[\w\.-]+\.\w+'
-reg_pattern = '\s*'
 
 
 def load_spacy():
@@ -44,7 +43,6 @@ def censor_using_google_nlp(text, input_file_name, statistics, original_text):
                 statistics[input_file_name]['addresses'] += 1
             elif entity.type_ == language_v1.Entity.Type.PHONE_NUMBER:
                 res = censor_text(res, entity.name, original_text)
-                res = res.replace(entity.name, '\u2588' * len(entity.name))
                 statistics[input_file_name]['phone_numbers'] += 1
             elif entity.type_ == language_v1.Entity.Type.DATE:
                 res = censor_text(res, entity.name, original_text)
@@ -69,6 +67,9 @@ def censor_using_spacy(text, nlp, input_file_name, statistics, original_text):
             elif ent.label_ == 'DATE':
                 censored_text = censor_text(censored_text, ent.text, original_text)
                 statistics[input_file_name]['dates'] += 1
+            elif ent.label_ in ['GPE', 'LOC']:
+                censored_text = censor_text(censored_text, ent.text, original_text)
+                statistics[input_file_name]['addresses'] += 1
 
         return censored_text
     except Exception as e:
@@ -160,36 +161,44 @@ def main():
 
 def censor_email(res, actual_file_name, statistics, original_text):
     email_text = res
-    email_list = []
-    names_to_censor = []
+    try:
+        email_list = []
+        names_to_censor = []
 
-    email_list = re.findall(email_pattern, email_text)
+        email_list = re.findall(email_pattern, email_text)
 
-    for email in email_list:
-        username, domain = email.split('@')
-        name = re.sub(r'[._/-]', ' ', username)
-        names_to_censor.extend(name.split(' '))
+        for email in email_list:
+            username, domain = email.split('@')
+            name = re.sub(r'[._/-]', ' ', username)
+            names_to_censor.extend(name.split(' '))
 
-    names_string = ' '.join(names_to_censor)
-    document = language_v1.Document(content=names_string, type_=language_v1.Document.Type.PLAIN_TEXT)
-    response = client.analyze_entities(document=document)
+        names_string = ' '.join(names_to_censor)
+        document = language_v1.Document(content=names_string, type_=language_v1.Document.Type.PLAIN_TEXT)
+        response = client.analyze_entities(document=document)
 
-    for entity in response.entities:
-        if entity.type_ == language_v1.Entity.Type.PERSON:
-            for value in names_to_censor:
-                email_text = censor_text(email_text, value, original_text)
-                statistics[actual_file_name]["names"] += 1
-    return email_text
+        for entity in response.entities:
+            if entity.type_ == language_v1.Entity.Type.PERSON:
+                for value in names_to_censor:
+                    email_text = censor_text(email_text, value, original_text)
+                    statistics[actual_file_name]["names"] += 1
+        return email_text
+    except Exception as e:
+        print("Exception occurred while censoring email", e)
 
 
 def censor_text(text, replace_text, original_text):
-    result = text
-    re_pat = replace_text.replace(" ", reg_pattern)
-    for match in re.finditer(re_pat, original_text):
-        start_pos, end_pos = match.start(), match.end()
-        censor_substring = ''.join('\u2588' if char != '\n' else char for char in original_text[start_pos:end_pos])
-        result = result[:start_pos] + censor_substring + result[end_pos:]
-    return result
+    res = text
+    try:
+        index = original_text.find(replace_text)
+        while index != -1:
+            start_pos = index
+            end_pos = start_pos + len(replace_text)
+            censored_substring = ''.join('\u2588' if char != '\n' else char for char in original_text[start_pos:end_pos])
+            res = res[:start_pos] + censored_substring + res[end_pos:]
+            index = original_text.find(replace_text, end_pos)
+        return res
+    except Exception as e:
+        print("Exception occurred while censoring text", e)
 
 
 def process_file(input_file, args, nlp, actual_file_name, statistics):

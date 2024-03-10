@@ -49,7 +49,7 @@ Enron Email Dataset.
 ## Bugs and Assumptions
 #### Bugs
 1. **Service Key Security:** Storing the Google NLP service key in a file might pose security risks. Consider providing guidelines on securing and managing sensitive credentials.
-2. **Spacy Misclassifies Non-Person Terms as Persons:** Spacy may erroneously recognize non-person entities like "X-From" as persons, leading to inaccurate entity labeling in certain scenarios.
+2. **Spacy Misclassifies Non-Person Terms as Persons:** Spacy may erroneously recognize non-person entities as persons, leading to inaccurate entity labeling in certain scenarios.
 
 #### Assumptions
 1. **Address Censoring:** The current implementation assumes that censor_address_using_pyap effectively captures and redacts all addresses. If there are limitations or specific address formats it might not handle, this should be documented.
