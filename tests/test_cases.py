@@ -23,7 +23,7 @@ class TestCensorUsingGoogleNLP(unittest.TestCase):
         input_text = "Manikumar lives at Main St. His phone number is (352) 555-1234. He was born on 01/01/1990."
         expected_output = "█████████ lives at ████████ His phone number is ██████████████. He was born on ██████████."
         statistics = initialize_statistics()
-        result = censor_using_google_nlp(input_text, 'test_file', statistics)
+        result = censor_using_google_nlp(input_text, 'test_file', statistics, input_text)
         self.assertEqual(result, expected_output)
 
     def test_censor_using_spacy(self):
@@ -31,13 +31,13 @@ class TestCensorUsingGoogleNLP(unittest.TestCase):
         text = "My name is Manikumar"
         expected_output = "My name is █████████"
         statistics = initialize_statistics()
-        result = censor_using_spacy(text, nlp, 'test_file', statistics)
+        result = censor_using_spacy(text, nlp, 'test_file', statistics, text)
         self.assertEqual(result, expected_output)
 
     def test_censor_address_using_pyap(self):
         text = "I stay at 2525 SW 39th Blvd Chicago Illinois 50368"
         expected = "I stay at ████████████████████████████████████████"
-        result = censor_address_using_pyap(text, 'test_file', initialize_statistics())
+        result = censor_address_using_pyap(text, 'test_file', initialize_statistics(), text)
         self.assertEqual(result, expected)
 
     def test_write_data_to_stats_stderr(self):
@@ -86,7 +86,7 @@ class TestCensorUsingGoogleNLP(unittest.TestCase):
         nlp = load_spacy()
         load_google_nlp_cred()
         actual_file_name = 'test_file'
-        statistics = {}
+        statistics = initialize_statistics()
         process_file(input_file, args, nlp, actual_file_name, statistics)
         expected_output_file = os.path.join(args.output, 'test_file.txt.censored')
         self.assertTrue(os.path.exists(expected_output_file))

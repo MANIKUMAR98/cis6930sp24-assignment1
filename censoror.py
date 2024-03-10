@@ -1,7 +1,9 @@
+import copy
+
 import spacy
 import argparse
 import glob
-import os
+import os, re
 from pathlib import Path
 import pyap
 import sys
@@ -11,8 +13,10 @@ from google.cloud import language_v1
 from google.oauth2 import service_account
 
 ##Global variable ###
-spacy.cli.download("en_core_web_md")
+# spacy.cli.download("en_core_web_md")
 client = None
+email_pattern = r'[\w\.-]+@[\w\.-]+\.\w+'
+reg_pattern = '\s*'
 
 
 def load_spacy():
@@ -29,54 +33,56 @@ def load_google_nlp_cred():
         print("Exception occurred while extracting credentials ", e)
 
 
-def censor_using_google_nlp(text, input_file_name, statistics):
+def censor_using_google_nlp(text, input_file_name, statistics, original_text):
     res = text
     try:
-        document = language_v1.Document(content=text, type_=language_v1.Document.Type.PLAIN_TEXT)
+        document = language_v1.Document(content=original_text, type_=language_v1.Document.Type.PLAIN_TEXT)
         response = client.analyze_entities(document=document)
         for entity in response.entities:
             if entity.type_ == language_v1.Entity.Type.LOCATION:
-                res = res.replace(entity.name, '\u2588' * len(entity.name))
+                res = censor_text(res, entity.name, original_text)
                 statistics[input_file_name]['addresses'] += 1
             elif entity.type_ == language_v1.Entity.Type.PHONE_NUMBER:
+                res = censor_text(res, entity.name, original_text)
                 res = res.replace(entity.name, '\u2588' * len(entity.name))
                 statistics[input_file_name]['phone_numbers'] += 1
             elif entity.type_ == language_v1.Entity.Type.DATE:
-                res = res.replace(entity.name, '\u2588' * len(entity.name))
+                res = censor_text(res, entity.name, original_text)
                 statistics[input_file_name]['dates'] += 1
             elif entity.type_ == language_v1.Entity.Type.PERSON:
-                res = res.replace(entity.name, '\u2588' * len(entity.name))
-                statistics[input_file_name]['dates'] += 1
+                res = censor_text(res, entity.name, original_text)
+                statistics[input_file_name]['names'] += 1
         return res
     except Exception as e:
         print("Exception occurred while censoring data using google nlp ", e)
         return res
 
 
-def censor_using_spacy(text, nlp, input_file_name, statistics):
+def censor_using_spacy(text, nlp, input_file_name, statistics, original_text):
     censored_text = text
     try:
-        doc = nlp(censored_text)
+        doc = nlp(original_text)
         for ent in doc.ents:
             if ent.label_ == 'PERSON':
-                censored_text = censored_text.replace(ent.text, '\u2588' * len(ent.text))
+                censored_text = censor_text(censored_text, ent.text, original_text)
                 statistics[input_file_name]['names'] += 1
             elif ent.label_ == 'DATE':
-                censored_text = censored_text.replace(ent.text, '\u2588' * len(ent.text))
+                censored_text = censor_text(censored_text, ent.text, original_text)
                 statistics[input_file_name]['dates'] += 1
+
         return censored_text
     except Exception as e:
         print("Exception occurred while censoring data using spacy ", e)
         return censored_text
 
 
-def censor_address_using_pyap(text, input_file_name, statistics):
+def censor_address_using_pyap(text, input_file_name, statistics, original_text):
     censored_text = text
     try:
-        addresses = pyap.parse(censored_text, country='US')
+        addresses = pyap.parse(original_text, country='US')
         for address in addresses:
             address_str = str(address)
-            censored_text = censored_text.replace(address_str, '\u2588' * len(address_str))
+            censored_text = censor_text(censored_text, address_str, original_text)
             statistics[input_file_name]['addresses'] += 1
         return censored_text
     except Exception as e:
@@ -141,7 +147,7 @@ def main():
         nlp = load_spacy()
         load_google_nlp_cred()
         for input_file in input_files:
-            if Path(input_file).exists():
+            if Path(input_file).exists() and input_file != "tests/test_file.txt":
                 try:
                     actual_file_name = os.path.basename(input_file)
                     statistics[actual_file_name] = file_statistics.copy()
@@ -149,17 +155,52 @@ def main():
                     file_count += 1
                 except Exception as e:
                     print(f"Error processing {input_file}: {e}")
-                write_data_to_stats(args.stats, file_count)
+                write_data_to_stats(args.stats, file_count, statistics)
+
+
+def censor_email(res, actual_file_name, statistics, original_text):
+    email_text = res
+    email_list = []
+    names_to_censor = []
+
+    email_list = re.findall(email_pattern, email_text)
+
+    for email in email_list:
+        username, domain = email.split('@')
+        name = re.sub(r'[._/-]', ' ', username)
+        names_to_censor.extend(name.split(' '))
+
+    names_string = ' '.join(names_to_censor)
+    document = language_v1.Document(content=names_string, type_=language_v1.Document.Type.PLAIN_TEXT)
+    response = client.analyze_entities(document=document)
+
+    for entity in response.entities:
+        if entity.type_ == language_v1.Entity.Type.PERSON:
+            for value in names_to_censor:
+                email_text = censor_text(email_text, value, original_text)
+                statistics[actual_file_name]["names"] += 1
+    return email_text
+
+
+def censor_text(text, replace_text, original_text):
+    result = text
+    re_pat = replace_text.replace(" ", reg_pattern)
+    for match in re.finditer(re_pat, original_text):
+        start_pos, end_pos = match.start(), match.end()
+        censor_substring = ''.join('\u2588' if char != '\n' else char for char in original_text[start_pos:end_pos])
+        result = result[:start_pos] + censor_substring + result[end_pos:]
+    return result
 
 
 def process_file(input_file, args, nlp, actual_file_name, statistics):
     try:
         with open(input_file, 'r') as file:
             text_to_censor = file.read()
-        res = censor_address_using_pyap(text_to_censor, actual_file_name, statistics)
-        res = censor_using_google_nlp(res, actual_file_name, statistics)
-        res = censor_using_spacy(res, nlp, actual_file_name, statistics)
-
+        original_text = copy.deepcopy(text_to_censor)
+        res = censor_address_using_pyap(text_to_censor, actual_file_name, statistics, original_text)
+        res = censor_email(res, actual_file_name, statistics, original_text)
+        res = censor_using_google_nlp(res, actual_file_name, statistics, original_text)
+        res = censor_using_spacy(res, nlp, actual_file_name, statistics, original_text)
         if not os.path.exists(args.output):
             os.makedirs(args.output)
         output_file = os.path.join(args.output, os.path.basename(input_file) + '.censored')
