@@ -32,7 +32,7 @@ def load_google_nlp_cred():
         print("Exception occurred while extracting credentials ", e)
 
 
-def censor_using_google_nlp(text, input_file_name, statistics, original_text):
+def censor_using_google_nlp(text, input_file_name, statistics, original_text, track_dup):
     res = text
     try:
         document = language_v1.Document(content=original_text, type_=language_v1.Document.Type.PLAIN_TEXT)
@@ -46,27 +46,36 @@ def censor_using_google_nlp(text, input_file_name, statistics, original_text):
                 statistics[input_file_name]['phone_numbers'] += 1
             elif entity.type_ == language_v1.Entity.Type.DATE:
                 res = censor_text(res, entity.name, original_text)
-                statistics[input_file_name]['dates'] += 1
+                if entity.name not in track_dup:
+                    statistics[input_file_name]['dates'] += 1
+                    track_dup.append(entity.name)
             elif entity.type_ == language_v1.Entity.Type.PERSON:
+                if entity.name not in track_dup:
+                    statistics[input_file_name]['names'] += 1
+                    track_dup.append(entity.name)
                 res = censor_text(res, entity.name, original_text)
-                statistics[input_file_name]['names'] += 1
         return res
     except Exception as e:
         print("Exception occurred while censoring data using google nlp ", e)
         return res
 
 
-def censor_using_spacy(text, nlp, input_file_name, statistics, original_text):
+def censor_using_spacy(text, nlp, input_file_name, statistics, original_text, track_dup):
     censored_text = text
     try:
         doc = nlp(original_text)
         for ent in doc.ents:
             if ent.label_ == 'PERSON':
                 censored_text = censor_text(censored_text, ent.text, original_text)
-                statistics[input_file_name]['names'] += 1
+                if ent.text not in track_dup:
+                    statistics[input_file_name]['names'] += 1
+                    track_dup.append(ent.text)
+                    print("Names ", ent.text)
             elif ent.label_ == 'DATE':
                 censored_text = censor_text(censored_text, ent.text, original_text)
-                statistics[input_file_name]['dates'] += 1
+                if ent.text not in track_dup:
+                    statistics[input_file_name]['dates'] += 1
+                    track_dup.append(ent.text)
             elif ent.label_ in ['GPE', 'LOC']:
                 censored_text = censor_text(censored_text, ent.text, original_text)
                 statistics[input_file_name]['addresses'] += 1
@@ -159,7 +168,7 @@ def main():
                 write_data_to_stats(args.stats, file_count, statistics)
 
 
-def censor_email(res, actual_file_name, statistics, original_text):
+def censor_email(res, actual_file_name, statistics, original_text, track_dup):
     email_text = res
     try:
         email_list = []
@@ -180,7 +189,9 @@ def censor_email(res, actual_file_name, statistics, original_text):
             if entity.type_ == language_v1.Entity.Type.PERSON:
                 for value in names_to_censor:
                     email_text = censor_text(email_text, value, original_text)
-                    statistics[actual_file_name]["names"] += 1
+                    if value in track_dup:
+                        statistics[actual_file_name]["names"] += 1
+                        track_dup.append(value)
         return email_text
     except Exception as e:
         print("Exception occurred while censoring email", e)
@@ -202,22 +213,26 @@ def censor_text(text, replace_text, original_text):
 
 
 def process_file(input_file, args, nlp, actual_file_name, statistics):
+    track_dup = []
     try:
         with open(input_file, 'r') as file:
             text_to_censor = file.read()
+
         original_text = copy.deepcopy(text_to_censor)
         res = censor_address_using_pyap(text_to_censor, actual_file_name, statistics, original_text)
-        res = censor_email(res, actual_file_name, statistics, original_text)
-        res = censor_using_google_nlp(res, actual_file_name, statistics, original_text)
-        res = censor_using_spacy(res, nlp, actual_file_name, statistics, original_text)
+        res = censor_email(res, actual_file_name, statistics, original_text, track_dup)
+        res = censor_using_google_nlp(res, actual_file_name, statistics, original_text, track_dup)
+        res = censor_using_spacy(res, nlp, actual_file_name, statistics, original_text, track_dup)
         if not os.path.exists(args.output):
             os.makedirs(args.output)
         output_file = os.path.join(args.output, os.path.basename(input_file) + '.censored')
 
         with open(output_file, 'w') as file:
             file.write(res)
+        track_dup.clear()
     except Exception as e:
         print("Exception occurred while processing file ", e)
+        track_dup.clear()
 
 
 if __name__ == '__main__':
