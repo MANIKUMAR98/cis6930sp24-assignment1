@@ -20,10 +20,11 @@ class TestCensorUsingGoogleNLP(unittest.TestCase):
 
     def test_censor_using_google_nlp(self):
         load_google_nlp_cred()
+        dup_list = []
         input_text = "Manikumar lives at Main St. His phone number is (352) 555-1234. He was born on 01/01/1990."
         expected_output = "█████████ lives at ████████ His phone number is ██████████████. He was born on ██████████."
         statistics = initialize_statistics()
-        result = censor_using_google_nlp(input_text, 'test_file', statistics, input_text)
+        result = censor_using_google_nlp(input_text, 'test_file', statistics, input_text, dup_list)
         self.assertEqual(result, expected_output)
 
     def test_censor_using_spacy(self):
@@ -31,7 +32,8 @@ class TestCensorUsingGoogleNLP(unittest.TestCase):
         text = "My name is Manikumar"
         expected_output = "My name is █████████"
         statistics = initialize_statistics()
-        result = censor_using_spacy(text, nlp, 'test_file', statistics, text)
+        dup_list = []
+        result = censor_using_spacy(text, nlp, 'test_file', statistics, text, dup_list)
         self.assertEqual(result, expected_output)
 
     def test_censor_address_using_pyap(self):
